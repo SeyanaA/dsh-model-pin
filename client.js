@@ -625,7 +625,9 @@ window.__ModuleLoader__.load({
             {
               name: 'settings.section',
               id: SLOT_ID,
-              order: 20,
+              // Sit right after the shipped Models page (order 10) and before
+              // Plugins (15) / Agent presets (20); no shipped page uses 12.
+              order: 12,
               label: () => t('settings.label'),
             },
             ModelPinSection,
