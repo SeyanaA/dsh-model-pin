@@ -351,6 +351,10 @@ async saveSelection(next) {
 
 ## 验证与排查
 
+> 交付时的实测证据（行状态、隔离 `--dump-config`、运行时 `session/modelCatalog` /
+> `settings.describe` / `settings.mutate` 结果、client 启动图）见
+> [`docs/verification.md`](./docs/verification.md)。
+
 ### 安装成功的标志
 
 1. `设置` 导航里出现 **模型固定**，页面显示「当前固定」与三个下拉框；
