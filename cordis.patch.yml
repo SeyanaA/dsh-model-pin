@@ -13,3 +13,4 @@
         provider: opencode-go
         model: deepseek-v4.1-flash
         reasoningEffort: max
+        modelCheckInterval: 7d

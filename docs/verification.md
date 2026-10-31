@@ -128,7 +128,41 @@ bundle 并向 `settings.section` 注册「模型固定」页面；页面读取�
 > 运行中的真实 DSH 实例**尚未重启**，它仍加载安装时的 0.1.0 宿主模块（两者机制一致，
 > 且 0.1.1 的行为已在隔离实例验证）；重启 DeepSeek Harness 后即为 0.1.1。
 
-## 7. 未验证 / 已知边界
+## 7. 0.2.0 模型检索周期复验（隔离实例）
+
+在同一个隔离 `DSH_HOME`（`/tmp/dsh-e2e`，profile `desktop-copy`）用新的宿主代码重启 web
+实例后，逐项验证「模型检索周期（新模型提醒）」：
+
+- **首次自动检查**：插件激活约 8 秒后自动执行一次；`GET /api/dsh-model-pin/status` 返回
+  `intervalId: "7d"`、`lastCheckAt` 已写入、`nextCheckAt = lastCheckAt + 7d`，`results` 为：
+  - `deepseek-official` / `deepseek-account`：`currentCount: 2`、`error: "该提供商不支持自动检查"`
+    （对应适配器没有注册 model discovery，符合预期）；
+  - `opencode-go`：`currentCount: 30`、`addedCount: 0`、无错误 —— 说明真的走到
+    `ctx.llm.discoverModels` 查询了端点（声明式 pi-ai 路由，`baseURL` / `api` 来自设置，
+    密钥由适配器用已保存凭证解析）。
+- **手动检查与请求硬化**：带 `content-type: application/json` + `x-dsh-model-pin-client: 1`
+  的 `POST /api/dsh-model-pin/check` 返回 200 与新状态；缺少客户端标识头时返回 403；
+  对 check 路由发 GET 返回 405。
+- **状态文件**：`$DSH_HOME/dsh-model-pin/state.json` 生成，`version: 1`，包含
+  `lastCheckAt` / 各 provider 结果 / `pendingFingerprint` / `dismissedFingerprint`。
+- **新模型提醒链路（注入式验证）**：在隔离 profile 的模型配置里临时删掉一个已配置模型
+  `minimax-m3`（其端点仍声明该模型）→ 下一次检查得到
+  `pending.total: 1`、`opencode-go: [{id:"minimax-m3", name:"MiniMax-M3"}]`；
+  `POST /api/dsh-model-pin/dismiss` 后 `pending.total: 0`，再检查同一集合仍为 0
+  （指纹已清除）；恢复配置后再检查 `pending.total: 0`、`currentCount` 回到 30 —— 没有误报。
+- **manual 周期语义**：`settings.mutate` 把 `modelCheckInterval` 改为 `manual` 后，
+  status 立刻变为 `manual: true`、`nextCheckAt: null`（volatile 热更新）；改回 `7d` 后恢复
+  `nextCheckAt` 时间戳。
+- **浏览器侧**：boot payload 中本插件模块 rev 变为 `a2c837b72d22`，制品 75035 B 正常下发，
+  含 `settings.models.footer`、`sidebar.footer.action`、三条 `/api/dsh-model-pin/*` 路由、
+  `openOfficialModelsSettings` 与 `modelCheckInterval`。
+- `node test/run.mjs`：37/37 通过。
+
+> 真实运行中的 DSH 实例仍未重启，因此宿主仍是 0.1.1 模块：新的设置页卡片在重启前会显示
+> 「模型检索服务尚未就绪：请重启 DeepSeek Harness 以加载新版本插件。」（这是设计好的
+> 降级提示，不会报错）；重启后即为 0.2.0，并在约 8 秒后完成第一次自动检查。
+
+## 8. 未验证 / 已知边界
 
 - **设置页的视觉渲染与鼠标操作**：本机没有可用的浏览器自动化，未做截图级验证；
   页面逻辑依赖的 `settings.describe` / `settings.mutate` / `session.modelCatalog`
@@ -138,3 +172,8 @@ bundle 并向 `settings.section` 注册「模型固定」页面；页面读取�
 - **推理强度清空**：`reasoningEffort` 的安装种子（`max`）位于 bundle patch 层；设置页的
   「跟随模型默认」通过写入空字符串覆盖实现（`unset` 会回落到种子值），已在
   `client.js` 与测试中固化。
+- **快速跳转的真实点击路径**：`openOfficialModelsSettings` 的 DOM 导航只在 Node 假 DOM 里
+  验证了成功/失败分支；真实界面里的设置入口与「模型」导航行点击需人工确认一次
+  （失败时会显示「请手动打开 设置 → 模型」）。
+- **三处提醒 UI 的真实渲染**：侧边栏徽标 / 官方模型页页脚提示 / 模型固定页卡片都按同一份
+  status 数据渲染，静态与假 DOM 冒烟通过；截图层面的确认留待真实重启后人工查看。

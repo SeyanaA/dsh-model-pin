@@ -10,6 +10,8 @@
 - **不劫持**：会话内模型选择器与 `/model` 继续可用，只是保存默认那一步变成空操作；
 - **可视化配置**：`设置 → 模型固定` 里选供应商、模型、推理强度，保存即生效；
 - **热更新**：配置字段是 volatile 的，改完新会话立刻用新值，不用重启 DSH；
+- **新模型提醒**：按周期检查你配置的 provider 是否上架了新模型，只在界面上提醒，
+  **不自动修改任何模型配置**；
 - **可回滚**：卸载插件后系统自带的默认模型行为自动恢复。
 
 > A small plugin for DeepSeek Harness Desktop that pins the provider/model used by **newly
@@ -30,6 +32,13 @@
 - [配置](#配置)
   - [设置页：设置 → 模型固定](#设置页设置--模型固定)
   - [cordis.patch.yml 配置](#cordispatchyml-配置)
+- [模型检索周期（新模型提醒）](#模型检索周期新模型提醒)
+  - [检查什么](#检查什么)
+  - [周期](#周期)
+  - [只提醒，不改配置](#只提醒不改配置)
+  - [提醒出现在哪里](#提醒出现在哪里)
+  - [快速跳转（尽力而为）](#快速跳转尽力而为)
+  - [状态文件与隐私](#状态文件与隐私)
 - [工作原理](#工作原理)
 - [与系统自带模型选择的关系](#与系统自带模型选择的关系)
 - [已有会话 / 子代理 / headless 行为](#已有会话--子代理--headless-行为)
@@ -52,8 +61,9 @@
 | 不改写默认 | 会话内切模型不会再写入 profile，不会被下次新建会话继承 |
 | 可视化配置 | `设置 → 模型固定` 页读取实时模型目录，提供供应商 / 模型 / 推理强度下拉与保存 |
 | 配置即数据 | 固定值就是 profile `cordis.patch.yml` 里 `dsh-model-pin` 行的 `config`，可手工编辑、可版本管理 |
+| 新模型提醒 | 按 `modelCheckInterval` 周期检查各 provider 端点是否有你没配置的新模型，在侧边栏 / 官方模型页 / 模型固定页提醒；只提醒，不改配置 |
 | 热更新 | 配置字段声明为 volatile，保存后新会话立即使用新值，无需重启 DSH |
-| 轻量 | 无第三方依赖、不联网、不读会话内容；宿主半边只 register 一个服务与一个配置项 |
+| 轻量 | 无第三方依赖、不读会话内容；除按周期访问你**已配置的** provider 端点外不发起其它网络请求 |
 
 ## 为什么需要
 
@@ -183,7 +193,10 @@ DSH 自带的默认模型服务是 `@deepseek-ai/dsh-agent-default-model`（总�
   选它表示不使用固定档位，由模型自己的默认强度决定（保存时会把 profile 覆盖写成
   空字符串 `reasoningEffort: ""`，见下面字段表的说明）；
 - **保存**：一次性写入 `provider` / `model` /（可选）`reasoningEffort`，保存成功显示「已保存」；
-  保存失败会保留错误提示，可重试。
+  保存失败会保留错误提示，可重试；
+- **模型检索周期**：同一页面下方的独立卡片，选择 `1d` / `3d` / `7d` / `14d` / `30d` / `manual`
+  并立即保存，同时展示上次 / 下次检查时间、最近结果与新增模型列表；详见
+  [模型检索周期（新模型提醒）](#模型检索周期新模型提醒)。
 
 模型目录由宿主实时提供：在 `设置 → 模型` 里新增供应商 / 模型后，重新打开或刷新该页即可出现。
 若模型目录读取失败，页面会提示「模型目录读取失败，仍可保存当前值。」——下拉框不完整，
@@ -211,6 +224,7 @@ DSH 自带的默认模型服务是 `@deepseek-ai/dsh-agent-default-model`（总�
 | `provider` | **建议填写**（缺失时插件仍加载，但新会话无法发起请求，日志会报错；设置页可补全） | `opencode-go`（安装种子） | 供应商路由 id，必须与 `设置 → 模型` 里的 Provider ID 一致（如 `opencode-go`、`deepseek-official`、`deepseek-account`） |
 | `model` | **建议填写**（同上） | `deepseek-v4.1-flash`（安装种子） | 该供应商下的**模型 id**（不是显示名，如 `deepseek-v4.1-flash`，而不是 `DeepSeek V4.1 Flash`） |
 | `reasoningEffort` | 否 | `max`（安装种子）；省略 = 跟随模型默认 | 推理强度 id，取值由模型声明（常见 `off` / `minimal` / `low` / `medium` / `high` / `xhigh` / `max`）；写模型不支持的档位会在请求时报错，见[已知限制](#已知限制) |
+| `modelCheckInterval` | 否 | `7d`（安装种子） | 模型检索周期，可选 `1d` / `3d` / `7d` / `14d` / `30d` / `manual`；`manual` = 不自动检查（「立即检查」仍可用）；未知取值按 `manual` 处理。见[模型检索周期（新模型提醒）](#模型检索周期新模型提醒) |
 
 > `provider` / `model` 在 schema 里**不是** required：把配置写错/写空不会让插件行加载失败，
 > 从而也不会连带卸载依赖 `agentDefaultModel` 的会话服务。代价是固定值不完整时，
@@ -232,8 +246,97 @@ DSH 自带的默认模型服务是 `@deepseek-ai/dsh-agent-default-model`（总�
 
 - `config` 是**整体替换**语义：改这一行时把需要的字段都写上（强烈建议写全 `provider` 与
   `model`；`reasoningEffort` 可省略，省略即跟随模型默认）；
-- 改完**不需要重启 DSH**——三个字段都是 volatile 的，配置引用会被重新采样，**新会话**立即生效；
+- 改完**不需要重启 DSH**——配置字段都是 volatile 的，配置引用会被重新采样，**新会话**立即生效；
 - 正在进行的会话不会中途换模型：它在每轮请求开始时已经确定了自己要用的模型。
+
+## 模型检索周期（新模型提醒）
+
+> 一句话：按周期去看看「供应商那边有没有上架你还没配置的新模型」，有就在界面上提醒你。
+> **它只提醒，永远不会自己改你的模型配置。**
+
+### 检查什么
+
+- 对每个**已注册**的 provider，按它自己适配器的模型发现能力去问「你现在提供哪些模型」
+  （没有配置模型或凭证的 provider 会被跳过并附注）：
+  - 适配器自带模型目录的（例如由目录直接描述模型的供应商），直接用适配器已知的目录回答，
+    不额外发请求（「已安装目录」型适配器就是这种情况）；
+  - 需要访问端点的，用你在 `设置 → 模型` 里已经配好的 `baseURL` / `api` 与保存的密钥去
+    查询该端点声明的模型列表；
+- 再与**当前模型目录**（`设置 → 模型` 里这个 provider 下已配置的模型清单）对比，只记录
+  「端点有、目录里没有」的新模型 id 与显示名；
+- 不支持的 provider（适配器没有模型发现能力，例如官方 DeepSeek 账号 / 官方 API 适配器）
+  会在结果里标明「该提供商不支持自动检查」；没有配置模型或凭证的 provider 会跳过并附注，
+  不会让整次检查失败。
+
+### 周期
+
+在 `设置 → 模型固定` →「模型检索周期」卡片里选择，也可直接改 `cordis.patch.yml` 的
+`modelCheckInterval` 字段：
+
+| 取值 | 含义 |
+| --- | --- |
+| `1d` / `3d` / `7d` / `14d` / `30d` | 每隔对应天数自动检查一次（安装种子 `7d`） |
+| `manual` | 不自动检查；想检查时点「立即检查」 |
+
+- 插件激活后约 8 秒先检查一次，之后每 60 秒判断一次是否到期（不是固定每天零点执行）；
+- **应用没在运行时不会检查**；界面会按「上次检查时间 + 周期」显示下次自动检查时间；
+- 未知取值按 `manual` 处理：打错字不会意外触发自动网络探测。
+
+### 只提醒，不改配置
+
+发现有新模型后，插件只是把「哪个 provider 多了哪些模型」记下来并提醒你。它**不会**：
+
+- 往 `设置 → 模型` 里添加 / 删除模型或供应商；
+- 修改 API Key、`baseURL`、`api` 等任何模型配置；
+- 修改本插件的 `provider` / `model` / `reasoningEffort` 固定值；
+- 替你抓取（fetch）新模型（提醒里的模型只是端点声明的 id / 名称）。
+
+想真正使用新模型，请到官方 `设置 → 模型` 里手动完成抓取 / 添加，然后回到
+`设置 → 模型固定` 点「清除提醒」。清除只是把这批新模型标记为「已看过」，不会改动模型目录；
+之后端点又出现**不同**的新模型时会重新提醒。
+
+### 提醒出现在哪里
+
+| 位置 | 表现 |
+| --- | --- |
+| 侧边栏页脚 | 有新模型时出现提醒按钮，带数量徽标；点击尝试跳到官方 `设置 → 模型` |
+| 官方 `设置 → 模型` 页脚 | 出现「模型固定：发现 N 个新模型」提示卡，附 provider / 模型列表，可立即再次检查或清除提醒 |
+| `设置 → 模型固定` | 「模型检索周期」卡片展示上次 / 下次检查时间、最近一次结果与新增模型列表，并提供「立即检查」「前往 设置 → 模型」「清除提醒」 |
+
+三处读的是同一份提醒状态（来自宿主的 `GET /api/dsh-model-pin/status`），任何一处清除提醒，
+另外两处也会随之收起。
+
+### 快速跳转（尽力而为）
+
+DSH 0.2.1 没有公开的「打开某个设置页」API，所以「前往 设置 → 模型」是**尽力而为的界面
+导航**：先触发官方设置入口（侧边栏设置按钮，找不到时尝试设置快捷键），再在设置导航里找到
+「模型」这一行并点击（标签优先取官方 `settings.models` 的本地化文本，找不到时回退到
+「模型」/「Models」）。如果 DSH 后续版本改了设置界面结构导致跳转失败，界面会提示
+「请手动打开 设置 → 模型」，提醒本身仍然有效。
+
+### 状态文件与隐私
+
+- **状态文件**：`$DSH_HOME/dsh-model-pin/state.json`；未设置 `DSH_HOME` 时即
+  `~/.dsh/dsh-model-pin/state.json`（DSH 数据目录）。内容只有上次检查时间、各 provider 的
+  检查结果 / 新增模型 id、已清除提醒的指纹，**不含密钥、不含对话内容**，文件权限为仅当前
+  用户可读写（0600）；
+- 写入采用原子替换（临时文件 + rename）；文件损坏或目录不可写时插件继续工作，只是提醒
+  状态可能重置；
+- **网络范围**：只访问你**已经在 `设置 → 模型` 里配置过的** provider 端点（沿用你自己保存的
+  API Key / 账号凭证），或由适配器直接回答的内置模型目录；除此之外不发起任何外部网络
+  请求、不上传任何数据、不读取会话内容（固定默认模型那部分仍然只在本地读配置）。
+
+### 本功能的已知限制
+
+- 适配器没有模型发现能力的 provider 无法自动检查，结果里会显示「该提供商不支持自动检查」；
+- 需要 DSH 正在运行：调度器随插件激活，应用关闭期间不会检查；
+- `manual` 周期不自动检查，只有「立即检查」会真正访问端点；
+- 提醒来自「端点模型列表 − 当前模型目录」的差集：端点需要额外权限、离线、响应超时（20 秒）
+  或适配器不暴露模型端点时会检查失败，错误会显示在结果里，但不影响模型正常使用；
+- 快速跳转依赖 DSH 当前设置界面结构，官方调整 UI 后可能需要手动导航（提醒本身不受影响）。
+- 单次检查里「读取当前模型目录」（`llm.listModels`）没有单独超时：极端情况下某个适配器的
+  目录读取卡住会让这次检查停住（下一次 60 秒 tick 会跳过它，等它结束），重启应用可恢复；
+  端点探测本身有 20 秒超时。
 
 ## 工作原理
 
@@ -450,7 +553,8 @@ async saveSelection(next) {
 4. 重启 DSH。
 
 > 回滚不会影响已有会话的模型（它们记录在各自会话日志里），也不需要迁移任何数据——
-> 插件不保存任何独立状态，所有配置只有 `cordis.patch.yml` 一处。
+> 固定值只有 `cordis.patch.yml` 一处；插件不保存密钥或对话内容，唯一的独立状态是
+> `~/.dsh/dsh-model-pin/state.json`（新模型提醒记录），卸载后删除即可。
 
 ## 已知限制
 
@@ -459,6 +563,9 @@ async saveSelection(next) {
   `saveSelection()` 与 `provider` / `model` / `reasoningEffort` 三个 volatile 配置字段）实现。
   DSH 升级时如果官方改了服务名、方法签名或字段语义，插件需要同步适配；升级后请重新验证
   本页的「[验证与排查](#验证与排查)」清单。插件不会主动修改 DSH 自身的安装文件。
+  新模型提醒还依赖 `ctx.llm.discoverModels` / `listConfigurableProviders` 的发现能力与
+  官方 `settings.models.footer`、`sidebar.footer.action` 插槽；这些内部契约变化时提醒功能
+  会降级（不再出现或检查报错），但固定默认模型不受影响。
 - **只影响新会话**：默认值是「会话创建 / 首次请求」时读取的；已经在跑的会话、正在进行的
   一轮请求都不会中途换模型。想让旧会话也用固定值，请新开会话。
 - **Config 的 `provider` / `model` 建议写全**：这两个字段没有默认值兜底（安装种子只是写入
@@ -498,9 +605,15 @@ node test/run.mjs
 - locale 元数据：`locale/en.json`、`locale/zh.json` 的 `meta.title` / `meta.description`；
 - `icon.svg`：XML 形态合法、体积 < 20KB；
 - `src/pin.js` 纯函数：`normalizeSelection` / `selectionEquals` / `describeSelection` 的行为；
+- `src/model-check.js` 纯函数：`INTERVAL_IDS`（含 `manual`）/ `normalizeIntervalId` /
+  `intervalMs` / `diffDiscovered` / `pendingFingerprint` / `nextCheckAt` 的行为；
+- `index.js`：三条 `/api/dsh-model-pin/*` 路由、状态文件名与 `version` 字段；
+- `client.js`：`settings.models.footer` / `sidebar.footer.action` 注册、三条路由调用、
+  `openOfficialModelsSettings` 跳转 helper、`modelCheckInterval` 写入；
 - 静态语法检查：把 `index.js` / `client.js` 复制到临时 `.mjs` 后用 `node --check` 校验；
 - `client.js` 的依赖约束：除 `require('react')` 外不引入宿主包；
-- README 覆盖：`provider` / `model` / `reasoningEffort` 三个 Config 字段都写进文档。
+- README 覆盖：`provider` / `model` / `reasoningEffort` / `modelCheckInterval` 四个 Config
+  字段都写进文档（含六种周期取值与「只提醒」语义）。
 
 修改宿主代码后需要重启 DSH 才能加载；只改设置页样式/文案时客户端支持热加载
 （`pnpm run dev:web` 相关流程由 DSH 自身负责，本插件不引入构建步骤）。
@@ -508,10 +621,11 @@ node test/run.mjs
 ## 目录结构
 
 ```text
-index.js            宿主半边：agentDefaultModel 服务 + Config（volatile 字段）
+index.js            宿主半边：agentDefaultModel 服务 + Config（volatile 字段）+ 新模型检查调度器与 HTTP 路由
 src/pin.js          纯函数辅助（选择值归一化 / 比较 / 展示文案），可单独测试
-client.js           浏览器半边：设置 → 模型固定 页面（settings.section）
-cordis.patch.yml    禁用内置 agent-default-model 行 + 插入 dsh-model-pin 行
+src/model-check.js  纯函数辅助（检索周期归一化 / 毫秒映射 / 新增模型 diff / 提醒指纹 / 下次检查时间），可单独测试
+client.js           浏览器半边：设置 → 模型固定 页面 + 官方模型页页脚提示 + 侧边栏提醒按钮
+cordis.patch.yml    禁用内置 agent-default-model 行 + 插入 dsh-model-pin 行（含 modelCheckInterval 种子）
 package.json        插件清单（dsh.bundle / dsh.client 声明、exports、files）
 icon.svg            插件图标
 locale/en.json      英文元数据（标题 / 描述）
@@ -549,6 +663,19 @@ In-session model switching (the composer model control and `/model`) keeps worki
 session only. Existing sessions, forked sessions and sessions that already logged a request
 header keep the model they were using; headless runs and sessions with no logged route use the
 pinned default. Uninstalling the bundle restores the built-in default-model behavior.
+
+**New-model reminders (0.2.0):** a `modelCheckInterval` setting (`1d` / `3d` / `7d` / `14d` /
+`30d` / `manual`, seeded `7d`) makes the host periodically ask each configured provider endpoint —
+through that provider adapter's own model discovery — which models it advertises, compare the
+answer with your configured catalog, and remember the difference in
+`~/.dsh/dsh-model-pin/state.json`. Reminders show up as a sidebar footer badge, a notice in the
+footer of the official Settings → Models page, and in the Model Pin page. The feature is
+**reminder-only**: it never adds models, never edits your provider/model configuration and never
+fetches anything on your behalf — fetch new models manually in Settings → Models, then dismiss the
+reminder. `manual` disables automatic checks while keeping "check now". Checks only contact the
+provider endpoints you already configured (using the credentials you stored) plus the adapter's
+built-in catalog, and the jump to Settings → Models is best-effort DOM navigation with a manual
+fallback.
 
 **Install:** put this directory at a stable path and ask the DSH agent to install it as a local
 bundle, then restart DSH:

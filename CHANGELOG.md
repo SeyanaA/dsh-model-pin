@@ -1,5 +1,62 @@
 # Changelog
 
+## 0.2.0 — 2026-11-01
+
+新增「模型检索周期（新模型提醒）」：按周期检查各 provider 端点是否上架了新模型，
+**只提醒、不自动改任何模型配置**。
+
+### 新功能
+
+- **`modelCheckInterval` 配置字段**（volatile）：`1d` / `3d` / `7d` / `14d` / `30d` /
+  `manual`，安装种子 `7d`；`manual` 表示不自动检查（「立即检查」仍然可用），
+  未知取值按 `manual` 处理，避免打错字就自动联网探测；
+- **模型发现与对比**：按周期遍历已注册且已配置的 provider，用该 provider 适配器自己的
+  模型发现能力（`ctx.llm.discoverModels`，目录型适配器直接回答、不额外发请求）查询端点
+  声明的模型，再与当前模型目录（`ctx.llm.listModels`）对比，只记录「端点有、目录里没有」
+  的新模型 id 与显示名；不支持的 provider 标为「该提供商不支持自动检查」，未配置模型 /
+  凭证的 provider 跳过并附注，单个 provider 失败不影响整次检查；
+- **调度器**：插件激活后约 8 秒做首次检查，之后每 60 秒判断一次是否到期
+  （`manual` 永不自动到期），随插件卸载清理定时器；
+- **提醒状态持久化**：`$DSH_HOME/dsh-model-pin/state.json`（默认
+  `~/.dsh/dsh-model-pin/state.json`，`version: 1`），记录 `lastCheckAt` / 各 provider 检查
+  结果 / 新增模型 / 提醒指纹，原子写入，读写失败不影响插件；
+- **同源 HTTP 路由**（宿主 `index.js`）：
+  `GET /api/dsh-model-pin/status`、`POST /api/dsh-model-pin/check`、
+  `POST /api/dsh-model-pin/dismiss`；POST 要求 `content-type: application/json` 与
+  `x-dsh-model-pin-client: 1` 头，并拒绝跨站请求；
+- **三处提醒 UI**（`client.js`）：
+  - `设置 → 模型固定` 新增「模型检索周期」卡片：周期下拉（立即保存）、上次 / 下次检查时间、
+    最近结果与新模型列表、「立即检查」「前往 设置 → 模型」「清除提醒」；
+  - 官方 `设置 → 模型` 页脚（`settings.models.footer`）出现新模型提示卡；
+  - 侧边栏页脚（`sidebar.footer.action`）出现带数量徽标的提醒按钮；
+- **快速跳转**：DSH 0.2.1 没有公开的「打开指定设置页」API，因此
+  `openOfficialModelsSettings` 做尽力而为的 DOM 导航（先点官方设置入口，再点「模型」导航行，
+  标签经 `ctx.locale.bind('settings.models')('nav')` 解析），失败时提示手动打开
+  `设置 → 模型`；
+- `package.json`：版本 `0.2.0`，`dsh.client.inject` 增加
+  `@deepseek-ai/dsh-client-ui-settings-models`（官方模型页页脚插槽的提供方）；
+  `cordis.patch.yml` 种子增加 `modelCheckInterval: 7d`。
+
+### 语义与边界
+
+- **只提醒，不改配置**：检查从不写 provider / model / 凭证，也不改动本插件的固定值；
+  新模型需要用户在官方 `设置 → 模型` 里手动抓取后才进入模型目录；「清除提醒」只把当前
+  这批新模型标记为已看过（按指纹记录），之后出现不同新模型会重新提醒；
+- **网络范围**：只访问用户已经在 `设置 → 模型` 里配置过的 provider 端点（沿用保存的密钥）
+  或适配器内置目录，不访问其它地址、不上传数据、不读取会话内容；
+- **提醒只在应用运行时产生**：关闭 DSH 期间不检查；`manual` 周期只有手动检查会访问端点。
+
+### 文档与测试
+
+- README：新增「模型检索周期（新模型提醒）」章节（检查内容 / 周期 / 只提醒语义 / 三处提醒 /
+  快速跳转与兜底 / 状态文件与隐私 / 本功能限制），配置字段表增加 `modelCheckInterval`，
+  功能表与目录结构更新，卸载回滚说明补上状态文件，英文段补充说明；
+- `node test/run.mjs`（零依赖）新增断言：`dsh.client.inject` 的官方模型页包、patch 种子
+  `modelCheckInterval: 7d`、`src/model-check.js` 动态 import 后的纯函数行为、`index.js` 的
+  三条路由与状态文件名 / 版本、`client.js` 的 `settings.models.footer` /
+  `sidebar.footer.action` 注册与三条路由 / `openOfficialModelsSettings` / `modelCheckInterval`、
+  README 的六种周期取值与「只提醒」措辞；既有 0.1.x 断言全部保留。
+
 ## 0.1.1 — 2026-11-01
 
 交付后加固（独立代码审计 + 运行时验证后的修订，机制不变）。

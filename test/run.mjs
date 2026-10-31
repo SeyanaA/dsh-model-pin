@@ -319,6 +319,10 @@ test('manifest: dsh bundle and client wiring', () => {
   assert(Array.isArray(dsh.client.inject), 'dsh.client.inject must be an array')
   assert(dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-settings'), 'client inject must include the UI settings package')
   assert(dsh.client.inject.includes('@deepseek-ai/dsh-api-remotes'), 'client inject must include the API remotes package')
+  assert(
+    dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-settings-models'),
+    'client inject must include the official Models settings package (settings.models.footer slot)',
+  )
 })
 
 test('manifest: host peers and engine bounds', () => {
@@ -334,7 +338,7 @@ test('manifest: host peers and engine bounds', () => {
 test('manifest: files[] covers every shipped runtime file', () => {
   const files = manifest.files
   assert(Array.isArray(files) && files.length > 0, 'files[] is missing')
-  const shipped = ['index.js', 'client.js', 'cordis.patch.yml', 'icon.svg', 'src/pin.js', 'locale/en.json', 'locale/zh.json']
+  const shipped = ['index.js', 'client.js', 'cordis.patch.yml', 'icon.svg', 'src/pin.js', 'src/model-check.js', 'locale/en.json', 'locale/zh.json']
   for (const relative of shipped) {
     assert(exists(relative), `shipped file ${relative} does not exist`)
     assert(
@@ -382,6 +386,7 @@ test('patch: inserts the pinned dsh-model-pin row', () => {
   assertEqual(row.config.provider, 'opencode-go', 'seed provider')
   assertEqual(row.config.model, 'deepseek-v4.1-flash', 'seed model')
   assertEqual(row.config.reasoningEffort, 'max', 'seed reasoning effort')
+  assertEqual(row.config.modelCheckInterval, '7d', 'seed model check interval')
 })
 
 // ---------------------------------------------------------------------------
@@ -481,6 +486,101 @@ test('helpers: describeSelection renders the pin', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Pure helpers for the new-model reminder (src/model-check.js)
+// ---------------------------------------------------------------------------
+
+const modelCheck = await import(pathToFileURL(join(root, 'src/model-check.js')).href)
+
+test('model-check helpers: module is dependency-free', () => {
+  const source = read('src/model-check.js')
+  assert(!/^\s*import\s/m.test(source), 'src/model-check.js must not import anything')
+  assert(!/require\(/.test(source), 'src/model-check.js must not use require()')
+  assert(!/@deepseek-ai\//.test(source), 'src/model-check.js must not reference harness packages')
+})
+
+test('model-check helpers: interval ids and defaults', () => {
+  assertEqual(modelCheck.DAY_MS, 24 * 60 * 60 * 1000, 'DAY_MS')
+  assertEqual(modelCheck.INTERVAL_IDS, ['1d', '3d', '7d', '14d', '30d', 'manual'], 'interval ids in presentation order')
+  assertEqual(modelCheck.DEFAULT_INTERVAL_ID, '7d', 'the absent-field default is the seed')
+  for (const id of ['1d', '3d', '7d', '14d', '30d', 'manual']) {
+    assertEqual(modelCheck.normalizeIntervalId(id), id, `normalize ${id}`)
+    assert(modelCheck.INTERVAL_IDS.includes(id), `INTERVAL_IDS must include ${id}`)
+  }
+  for (const value of [undefined, null, '', '   ', 42, false]) {
+    assertEqual(modelCheck.normalizeIntervalId(value), '7d', `blank ${JSON.stringify(value)} falls back to the seed`)
+  }
+  for (const value of ['2d', '7', 'MANUAL', 'daily']) {
+    assertEqual(modelCheck.normalizeIntervalId(value), 'manual', `unknown ${JSON.stringify(value)} must not start network probing`)
+  }
+})
+
+test('model-check helpers: intervalMs maps ids to periods', () => {
+  assertEqual(modelCheck.intervalMs('1d'), modelCheck.DAY_MS, '1d')
+  assertEqual(modelCheck.intervalMs('3d'), 3 * modelCheck.DAY_MS, '3d')
+  assertEqual(modelCheck.intervalMs('7d'), 7 * modelCheck.DAY_MS, '7d')
+  assertEqual(modelCheck.intervalMs('14d'), 14 * modelCheck.DAY_MS, '14d')
+  assertEqual(modelCheck.intervalMs('30d'), 30 * modelCheck.DAY_MS, '30d')
+  assertEqual(modelCheck.intervalMs('manual'), null, 'manual has no automatic period')
+  assertEqual(modelCheck.intervalMs(undefined), 7 * modelCheck.DAY_MS, 'an absent interval uses the seed period')
+  assertEqual(modelCheck.intervalMs('bogus'), null, 'an unknown interval behaves like manual')
+})
+
+test('model-check helpers: diffDiscovered keeps only ids missing from the catalog', () => {
+  const discovered = [
+    { id: 'a', name: 'Model A' },
+    { id: 'b', name: 'Model B' },
+    { id: 'a', name: 'Model A again' },
+    'c',
+    { id: '', name: 'blank' },
+    null,
+  ]
+  const current = [{ id: 'b' }, 'd']
+  const added = modelCheck.diffDiscovered(discovered, current)
+  assertEqual(added.map((model) => model.id), ['a', 'c'], 'new ids in discovery order, duplicates and blanks dropped')
+  assertEqual(added.map((model) => model.name), ['Model A', 'c'], 'a missing display name falls back to the id')
+  assertEqual(modelCheck.diffDiscovered([], current), [], 'nothing advertised means nothing new')
+  assertEqual(modelCheck.diffDiscovered(null, null), [], 'non-list inputs are tolerated')
+  assertEqual(
+    modelCheck.diffDiscovered([{ id: 'x' }], []),
+    [{ id: 'x', name: 'x' }],
+    'an empty catalog makes every advertised id new',
+  )
+})
+
+test('model-check helpers: pendingFingerprint is stable and order-insensitive', () => {
+  const left = [
+    { provider: 'p1', added: [{ id: 'm2' }, { id: 'm1' }] },
+    { provider: 'p2', added: [{ id: 'm3' }] },
+  ]
+  const right = [
+    { provider: 'p2', added: ['m3'] },
+    { provider: 'p1', added: [{ id: 'm1' }, { id: 'm2' }, { id: 'm2' }] },
+  ]
+  assertEqual(modelCheck.pendingFingerprint(left), modelCheck.pendingFingerprint(right), 'the same pending set must fingerprint the same')
+  assertEqual(typeof modelCheck.pendingFingerprint(left), 'string', 'a pending set serializes to a string')
+  assertEqual(modelCheck.pendingFingerprint([]), null, 'nothing pending has no fingerprint')
+  assertEqual(modelCheck.pendingFingerprint([{ provider: 'p', added: [] }]), null, 'a provider without new models is not pending')
+  assert(
+    modelCheck.pendingFingerprint(left) !== modelCheck.pendingFingerprint([{ provider: 'p1', added: [{ id: 'm1' }] }]),
+    'a different pending set must fingerprint differently',
+  )
+})
+
+test('model-check helpers: nextCheckAt respects the configured interval', () => {
+  const now = 1_700_000_000_000
+  assertEqual(modelCheck.nextCheckAt(null, '7d', now), now, 'a profile that never checked is due immediately')
+  assertEqual(modelCheck.nextCheckAt(now - 1000, '1d', now), now - 1000 + modelCheck.DAY_MS, 'last check plus the period')
+  assertEqual(modelCheck.nextCheckAt(now, '3d', now), now + 3 * modelCheck.DAY_MS, '3d')
+  assertEqual(modelCheck.nextCheckAt(now, 'manual', now), null, 'manual never schedules an automatic check')
+  assertEqual(modelCheck.nextCheckAt(null, 'bogus', now), null, 'an unknown interval behaves like manual')
+  assertEqual(
+    modelCheck.nextCheckAt(now - 10 * modelCheck.DAY_MS, '7d', now),
+    now - 10 * modelCheck.DAY_MS + 7 * modelCheck.DAY_MS,
+    'an overdue check keeps its computed due time so callers can show it as due',
+  )
+})
+
+// ---------------------------------------------------------------------------
 // Host entry (index.js) and client entry (client.js)
 // ---------------------------------------------------------------------------
 
@@ -520,6 +620,23 @@ test('host: Config keeps the three live fields', () => {
   assertMatch(source, /settings\.configure\(\{\s*auto:\s*false\s*\}/, 'the row must opt out of the automatic Settings form')
 })
 
+test('host: model retrieval interval check, state file and routes', () => {
+  const source = read('index.js')
+  assertMatch(source, /modelCheckInterval:\s*z\.string\(\)\.volatile\(\)/, 'modelCheckInterval must be an optional volatile Config field')
+  assertMatch(source, /discoverModels/, 'the periodic check must use the adapter model discovery')
+  assertMatch(source, /listModels/, 'the periodic check must compare against the configured model catalog')
+  for (const route of ['/api/dsh-model-pin/status', '/api/dsh-model-pin/check', '/api/dsh-model-pin/dismiss']) {
+    assert(source.includes(route), `index.js must register the ${route} route`)
+  }
+  assert(source.includes('state.json'), 'the reminder state file must be named state.json')
+  assertMatch(source, /DSH_HOME/, 'the state directory must honour DSH_HOME')
+  assertMatch(source, /homedir\(\)[^\n]*\.dsh/, 'the state directory must default to ~/.dsh')
+  assertMatch(source, /join\([^\n]*['"]state\.json['"]\)/, 'the state file must be written through a state.json path')
+  assertMatch(source, /version:\s*1/, 'the persisted reminder state must carry version 1')
+  assertMatch(source, /x-dsh-model-pin-client/, 'the write routes must require the client header')
+  assertMatch(source, /setInterval|setTimeout/, 'the scheduler must tick with a timer')
+})
+
 test('client: client.js parses as ESM', () => {
   syntaxCheck('client.js')
 })
@@ -556,6 +673,18 @@ test('client: "follow model default" writes a blank set, never an unset', () => 
   assert(!/op:\s*'unset'/.test(source), "client.js must not unset reasoningEffort (an unset restores the seeded 'max')")
 })
 
+test('client: new-model reminders, host routes and the official Models footer', () => {
+  const source = read('client.js')
+  assertMatch(source, /settings\.models\.footer/, 'client.js must fill the official Models settings page footer slot')
+  assertMatch(source, /sidebar\.footer\.action/, 'client.js must contribute a sidebar footer action')
+  for (const route of ['/api/dsh-model-pin/status', '/api/dsh-model-pin/check', '/api/dsh-model-pin/dismiss']) {
+    assert(source.includes(route), `client.js must call the ${route} route`)
+  }
+  assertMatch(source, /openOfficialModelsSettings/, 'client.js must implement the best-effort jump helper')
+  assertMatch(source, /modelCheckInterval/, 'client.js must read and write the modelCheckInterval config field')
+  assertMatch(source, /x-dsh-model-pin-client/, 'client.js writes must send the client header')
+})
+
 test('consistency: settings label matches the locale metadata', () => {
   const source = read('client.js')
   for (const language of ['en', 'zh']) {
@@ -572,7 +701,7 @@ const readme = read('README.md')
 const changelog = read('CHANGELOG.md')
 
 test('docs: README documents every Config field', () => {
-  for (const field of ['provider', 'model', 'reasoningEffort']) {
+  for (const field of ['provider', 'model', 'reasoningEffort', 'modelCheckInterval']) {
     const occurrences = (readme.match(new RegExp(`\`${field}\``, 'g')) ?? []).length
     assert(occurrences >= 2, `README must mention the Config field ${field} at least twice, found ${occurrences}`)
   }
@@ -589,6 +718,7 @@ test('docs: README sections required by the package usage guide', () => {
     '为什么需要',
     '安装',
     '配置',
+    '模型检索周期（新模型提醒）',
     '工作原理',
     '与系统自带模型选择的关系',
     '已有会话 / 子代理 / headless 行为',
@@ -603,6 +733,19 @@ test('docs: README sections required by the package usage guide', () => {
   assertMatch(readme, /node test\/run\.mjs/, 'README must document the test command')
   assertMatch(readme, /plugin_manager/, 'README must document the plugin_manager verification path')
   assertMatch(readme, /设置 → 模型固定/, 'README must point users at Settings → 模型固定')
+})
+
+test('docs: README documents the new-model reminder semantics', () => {
+  assertMatch(readme, /模型检索周期（新模型提醒）/, 'README must name the model retrieval section')
+  for (const option of ['1d', '3d', '7d', '14d', '30d', 'manual']) {
+    assert(readme.includes(`\`${option}\``), `README must document the modelCheckInterval option ${option}`)
+  }
+  assertMatch(readme, /只提醒/, 'README must state the feature only reminds')
+  assertMatch(readme, /不自动修改|永远不会自己改|不会[^。\n]*修改/, 'README must state that it never edits the model configuration')
+  assertMatch(readme, /state\.json/, 'README must document the reminder state file')
+  assertMatch(readme, /~\/\.dsh\/dsh-model-pin|DSH_HOME/, 'README must document where the state file lives')
+  assertMatch(readme, /settings\.models\.footer|设置 → 模型.*页脚/, 'README must document where reminders appear')
+  assertMatch(readme, /openOfficialModelsSettings|快速跳转/, 'README must document the best-effort jump')
 })
 
 test('docs: CHANGELOG, LICENSE, .gitignore and CI', () => {
