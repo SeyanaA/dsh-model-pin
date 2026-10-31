@@ -1,6 +1,14 @@
 # dsh-model-pin · 模型固定
 
+[![test](https://github.com/SeyanaA/dsh-model-pin/actions/workflows/test.yml/badge.svg)](https://github.com/SeyanaA/dsh-model-pin/actions/workflows/test.yml)
+[![release](https://img.shields.io/github/v/release/SeyanaA/dsh-model-pin)](https://github.com/SeyanaA/dsh-model-pin/releases)
+[![license](https://img.shields.io/github/license/SeyanaA/dsh-model-pin)](./LICENSE)
+
 <img src="./docs/icon.png" width="72" height="72" alt="dsh-model-pin 图标">
+
+**GitHub 仓库**：[SeyanaA/dsh-model-pin](https://github.com/SeyanaA/dsh-model-pin) ·
+**问题反馈**：[Issues](https://github.com/SeyanaA/dsh-model-pin/issues) ·
+**更新日志**：[CHANGELOG](./CHANGELOG.md)
 
 给 [DeepSeek Harness Desktop](https://github.com/deepseek-ai) 用的**新会话默认模型固定**插件：
 新开的会话永远从你指定的 `provider` + `model`（可带推理强度）开始；会话内的模型选择器、
@@ -26,9 +34,15 @@
 - [功能](#功能)
 - [为什么需要](#为什么需要)
 - [环境要求](#环境要求)
-- [安装](#安装)
-  - [方式一：让 DSH 里的 Agent 安装（推荐）](#方式一让-dsh-里的-agent-安装推荐)
-  - [方式二：手动安装](#方式二手动安装)
+- [注册方法（安装到 DSH）](#注册方法安装到-dsh)
+  - [方式零：从 GitHub 获取插件目录](#方式零从-github-获取插件目录)
+  - [方式一：让 DSH 里的 Agent 注册（推荐）](#方式一让-dsh-里的-agent-注册推荐)
+  - [方式二：手动注册](#方式二手动注册)
+  - [注册成功的标志](#注册成功的标志)
+- [使用方法](#使用方法)
+  - [3 分钟上手](#3-分钟上手)
+  - [日常使用速查](#日常使用速查)
+  - [生效规则](#生效规则)
 - [配置](#配置)
   - [设置页：设置 → 模型固定](#设置页设置--模型固定)
   - [cordis.patch.yml 配置](#cordispatchyml-配置)
@@ -95,43 +109,51 @@ DSH 自带的默认模型服务是 `@deepseek-ai/dsh-agent-default-model`（总�
 - 宿主半边把 `@deepseek-ai/cordis` 与 `@deepseek-ai/schemastery` 声明为 peerDependencies，
   由 DSH 自身提供，不会额外安装。
 
-## 安装
+## 注册方法（安装到 DSH）
 
-> 插件以「本地 bundle」形式安装进 DSH 的 profile（默认 `desktop`）。
-> 安装后要**保留插件目录**，不要删除或移动它（profile 通过 `link:` 依赖引用它）。
-> 本插件目前不发布到 npm / Release，直接使用本机目录安装。
+> 「注册」指让 DSH 把这个包当作 **profile bundle** 加载：依赖里加 `dsh-model-pin`、
+> `dsh.profile.bundles` 里登记它，随后 bundle patch 会自动禁用内置的
+> `agent-default-model` 行并插入本插件的行。注册后要**保留插件目录**，不要删除或移动它
+> （profile 通过 `link:` 依赖引用它）。本插件不发布到 npm，使用 Git 仓库 / 本地目录注册。
 
-### 方式一：让 DSH 里的 Agent 安装（推荐）
+### 方式零：从 GitHub 获取插件目录
+
+```bash
+git clone https://github.com/SeyanaA/dsh-model-pin.git ~/.dsh/local-plugins/dsh-model-pin
+```
+
+也可以用浏览器下载仓库 ZIP（或 Release 源码包）解压到固定位置，例如
+`~/.dsh/local-plugins/dsh-model-pin`。下面两种注册方式都使用这个目录的**绝对路径**。
+
+### 方式一：让 DSH 里的 Agent 注册（推荐）
 
 1. 确认插件目录在本机固定位置，例如：
 
    ```text
-   /Users/seyana/Desktop/DSH/dsh-model-pin
+   ~/.dsh/local-plugins/dsh-model-pin
    ```
 
 2. 打开 DeepSeek Harness，新建一个对话，对 Agent 说：
 
-   > 把 `/Users/seyana/Desktop/DSH/dsh-model-pin` 作为本地插件安装到当前 profile。
+   > 把 `~/.dsh/local-plugins/dsh-model-pin` 作为本地插件注册到当前 profile。
 
    Agent 会调用插件管理工具（`plugin_manager` 的 `install_bundle`，target 为该目录绝对路径），
    自动完成依赖链接与 bundle 注册。
 
 3. **完全退出并重新打开** DeepSeek Harness（宿主插件要重启；设置页也要重新加载）。
 
-4. 打开 `设置 → 模型固定`，确认当前固定值。安装种子是：
+4. 打开 `设置 → 模型固定`，确认当前固定值。注册种子是：
 
    | 字段 | 种子值 |
    | --- | --- |
    | `provider` | `opencode-go` |
    | `model` | `deepseek-v4.1-flash` |
    | `reasoningEffort` | `max` |
+   | `modelCheckInterval` | `7d`（7 天检查一次新模型；可改「手动」） |
 
    改成你要的组合，点 **保存**。
 
-安装成功的标志：`设置` 导航里出现 **模型固定**，打开后能看到「当前固定」与三个下拉框，
-新开一个对话时模型选择器默认显示的就是这组模型。
-
-### 方式二：手动安装
+### 方式二：手动注册
 
 适合不想让 Agent 代操作、或需要批量部署的情况。
 
@@ -175,9 +197,61 @@ DSH 自带的默认模型服务是 `@deepseek-ai/dsh-agent-default-model`（总�
 
 4. 完全退出并重新打开 DeepSeek Harness，然后到 `设置 → 模型固定` 确认 / 修改固定值。
 
-> 安装后会同时发生三件事：插件自身作为 bundle 插入一行 `dsh-model-pin`；插件的 bundle
+> 注册后会同时发生三件事：插件自身作为 bundle 插入一行 `dsh-model-pin`；插件的 bundle
 > patch 会把内置的 `agent-default-model` 行标记为 `disabled`；`agentDefaultModel` 服务改由
 > 本插件提供。具体见[工作原理](#工作原理)。
+
+### 注册成功的标志
+
+1. `设置` 导航里出现 **模型固定**，打开后能看到「当前固定」「模型检索周期」两张卡片；
+2. `plugin_manager` 的 `list_plugins` 中 `dsh-model-pin` 为 `enabled: true` +
+   `fiberPhase: active`，内置的 `agent-default-model` 为 `enabled: false`；
+3. 新开一个对话，模型选择器默认显示你固定的那组模型。
+
+完整排查步骤见[验证与排查](#验证与排查)。
+
+## 使用方法
+
+注册并重启 DSH 后，这个插件只做两件事：**给新会话固定默认模型** 和 **按周期提醒新模型**。
+
+### 3 分钟上手
+
+1. 打开 `设置 → 模型固定`，在「默认对话模型」卡片里选好 **供应商 / 模型 / 推理强度**，点 **保存**
+   （注册种子是 `opencode-go / deepseek-v4.1-flash / max`，通常不用改）。
+2. 在同一页的「模型检索周期」卡片里选择检查周期：`1天 / 3天 / 7天 / 14天 / 30天 / 手动`
+   （默认 7 天；不想自动检查就选「手动」）。
+3. 新开一个对话——输入框旁的模型选择器显示的就是固定值；之后无论你在哪个会话里临时换过
+   模型，新会话仍然回到固定值。
+4. 有候选新模型时，侧边栏页脚会出现带数字徽标的提醒按钮；点它尝试跳到官方
+   `设置 → 模型` 手动抓取，抓完回来点「清除提醒」。
+
+### 日常使用速查
+
+| 我想…… | 怎么做 |
+| --- | --- |
+| 固定 / 更换新会话的默认模型 | `设置 → 模型固定` → 选供应商 / 模型 / 推理强度 → **保存**（立即生效，新会话使用） |
+| 临时用另一个模型聊 | 直接用输入框旁的模型选择器或 `/model`——只影响当前会话，不会改默认值 |
+| 调整自动检查周期 | `设置 → 模型固定` →「模型检索周期」下拉，选完立即保存 |
+| 立即检查有没有新模型 | 同一张卡片点 **立即检查**（「手动」周期下也可用） |
+| 查看最近一次检查结果 | 「模型检索周期」卡片里看上次 / 下次检查时间、各 provider 结果与新增模型列表 |
+| 处理新模型提醒 | 侧边栏提醒按钮 → 跳到官方 `设置 → 模型` 手动抓取 → 回来点 **清除提醒** |
+| 在官方模型配置页处理 | 官方 `设置 → 模型` 页脚也会出现「模型固定：发现 N 个新模型」提示卡，可直接再次检查 / 清除提醒 |
+| 直接改配置文件 | 改 profile `cordis.patch.yml` 里 `dsh-model-pin` 行的 `config`（字段见[配置](#配置)） |
+
+> 提醒只告诉你「哪些模型在端点上存在、但你的模型目录里没有」。它**不会**替你添加模型、改
+> API Key / `baseURL`，也不会改你的固定值；真正的抓取与配置始终在官方 `设置 → 模型` 里由你
+> 手动完成（见[模型检索周期（新模型提醒）](#模型检索周期新模型提醒)）。
+
+### 生效规则
+
+- **新会话**：使用固定值；在设置页保存后立即生效（volatile 配置，无需重启）。
+- **已有会话**：保持它自己记录的模型，不会中途被换；在里面换模型也不会改写默认值。
+- **会话分支 / 子代理**：沿用父会话的路由记录；插件只做「没有显式路由时的兜底」。
+- **headless**：只有该 profile 也注册了本插件时才使用固定值。
+- **模型检索**：插件激活约 8 秒后做第一次检查，之后每 60 秒判断一次是否到期；DSH 关闭期间
+  不检查。
+
+更细的配置项与排查方式见下文。
 
 ## 配置
 
@@ -645,6 +719,8 @@ test/               纯 Node 冒烟测试（node test/run.mjs）
 
 A **model-pin** plugin for DeepSeek Harness Desktop (≥ 0.2.0-rc.3). It pins the default
 provider/model used by **newly created sessions**.
+Repository: <https://github.com/SeyanaA/dsh-model-pin> — clone it with
+`git clone https://github.com/SeyanaA/dsh-model-pin.git ~/.dsh/local-plugins/dsh-model-pin`.
 
 The built-in `@deepseek-ai/dsh-agent-default-model` service both answers "which model should a
 fresh session use?" and persists a selection written back by the in-session picker. That means
@@ -677,18 +753,27 @@ provider endpoints you already configured (using the credentials you stored) plu
 built-in catalog, and the jump to Settings → Models is best-effort DOM navigation with a manual
 fallback.
 
-**Install:** put this directory at a stable path and ask the DSH agent to install it as a local
-bundle, then restart DSH:
+**Register (install into DSH):** put this directory at a stable path (for example the clone
+above) and ask the DSH agent to register it as a local bundle, then restart DSH:
 
-> “Install `/Users/you/dsh-model-pin` as a local bundle in the current profile.”
+> “Register `~/.dsh/local-plugins/dsh-model-pin` as a local bundle in the current profile.”
 
-The agent calls `plugin_manager` → `install_bundle` with the absolute path. Or add
-`"dsh-model-pin": "link:/abs/path/to/dsh-model-pin"` to the profile `dependencies`, append
-`"dsh-model-pin"` to `dsh.profile.bundles`, run `pnpm install`, and restart.
+The agent calls `plugin_manager` → `install_bundle` with the absolute path. Manual alternative:
+add `"dsh-model-pin": "link:/abs/path/to/dsh-model-pin"` to the profile `dependencies`, append
+`"dsh-model-pin"` to `dsh.profile.bundles`, run `pnpm install` in the profile directory (or use
+DSH's bundled pnpm), and restart. Keep the directory in place afterwards: the profile references
+it through a `link:` dependency.
+
+**Use:** `设置 → 模型固定` (Settings → Model Pin) lets you pick the pinned provider/model/effort
+and the new-model check interval (`1d`/`3d`/`7d`/`14d`/`30d`/`manual`, seeded `7d`); saves apply
+to new sessions immediately. The in-session picker and `/model` keep working for the current
+session only. When the periodic check finds models that your catalog lacks, a sidebar badge, a
+notice in the official Settings → Models page footer and the Model Pin page show the reminder;
+fetch the models manually in Settings → Models, then dismiss the reminder.
 
 **Verify:** `plugin_manager` → `list_plugins` should show `dsh-model-pin` as `enabled: true` and
 `fiberPhase: "active"`, and `agent-default-model` as `enabled: false`. Settings → 模型固定 should
-open and save. Seed values: `opencode-go` / `deepseek-v4.1-flash` / `max`.
+open and save. Seed values: `opencode-go` / `deepseek-v4.1-flash` / `max` / `7d`.
 
 **Test:** `node test/run.mjs` (plain Node ESM, no dependencies).
 

@@ -1,7 +1,25 @@
 {
   "name": "dsh-model-pin",
   "version": "0.2.0",
-  "description": "Pins the default conversation model and provider for newly created Sessions while the built-in per-Session model picker keeps working.",
+  "description": "Pins the default conversation model and provider for newly created Sessions while the built-in per-Session model picker keeps working, and reminds you when configured providers add new models.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SeyanaA/dsh-model-pin.git"
+  },
+  "homepage": "https://github.com/SeyanaA/dsh-model-pin#readme",
+  "bugs": {
+    "url": "https://github.com/SeyanaA/dsh-model-pin/issues"
+  },
+  "author": "SeyanaA",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "cordis-plugin",
+    "model",
+    "default-model",
+    "model-pin"
+  ],
   "type": "module",
   "main": "index.js",
   "exports": {

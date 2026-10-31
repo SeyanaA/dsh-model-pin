@@ -716,7 +716,8 @@ test('docs: README sections required by the package usage guide', () => {
   const required = [
     '功能',
     '为什么需要',
-    '安装',
+    '注册方法（安装到 DSH）',
+    '使用方法',
     '配置',
     '模型检索周期（新模型提醒）',
     '工作原理',
