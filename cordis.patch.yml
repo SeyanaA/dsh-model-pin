@@ -1,0 +1,15 @@
+# Replace the stock default-model owner with this package's pinned selection.
+#
+# Bundle layers apply before the user profile patch. The profile patch may
+# override the stock row's `config`, but it never names `disabled`, so this
+# layer's `disabled: true` stays effective for the whole profile.
+- id: agent-default-model
+  disabled: true
+
+- insert:
+    - id: dsh-model-pin
+      name: 'dsh-model-pin'
+      config:
+        provider: opencode-go
+        model: deepseek-v4.1-flash
+        reasoningEffort: max

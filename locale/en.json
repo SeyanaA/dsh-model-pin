@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Model Pin",
+    "description": "Pins the default conversation model and provider for newly created sessions; the built-in per-session model picker keeps working."
+  }
+}
