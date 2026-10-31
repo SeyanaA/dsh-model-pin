@@ -57,6 +57,15 @@
   `sidebar.footer.action` 注册与三条路由 / `openOfficialModelsSettings` / `modelCheckInterval`、
   README 的六种周期取值与「只提醒」措辞；既有 0.1.x 断言全部保留。
 
+### 发布
+
+- **GitHub**：仓库 <https://github.com/SeyanaA/dsh-model-pin>（tag `v0.2.0`，含 Release）；
+- README 的「安装」章节重构为 **「注册方法（安装到 DSH）」**：新增从 GitHub 克隆步骤、
+  Agent 注册 / 手动注册、注册成功标志；新增 **「使用方法」** 章节（3 分钟上手、日常使用速查、
+  生效规则）；
+- `package.json` 增加 `repository` / `homepage` / `bugs` / `author` / `keywords`，便于在
+  GitHub 与插件生态中检索。
+
 ## 0.1.1 — 2026-11-01
 
 交付后加固（独立代码审计 + 运行时验证后的修订，机制不变）。

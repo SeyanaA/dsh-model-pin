@@ -5,13 +5,13 @@
 **0.2.1-rc.3**）、`desktop` profile。
 
 本文件记录插件交付时的实际验证证据，方便日后升级 DSH 后对照复查。命令均在
-`/Users/seyana/Desktop/DSH/dsh-model-pin` 或隔离的 `DSH_HOME` 下执行；隔离验证没有写入
+`~/Desktop/DSH/dsh-model-pin` 或隔离的 `DSH_HOME` 下执行；隔离验证没有写入
 真实 `~/.dsh`，也没有动正在运行的 DSH 进程。
 
 ## 1. 静态检查
 
 ```bash
-cd /Users/seyana/Desktop/DSH/dsh-model-pin
+cd ~/Desktop/DSH/dsh-model-pin
 node test/run.mjs
 # 28 passed, 0 failed (of 28)  →  all dsh-model-pin tests passed
 ```
@@ -22,10 +22,10 @@ host 与 client 静态语法与模块形状 / README 字段覆盖。
 ## 2. 安装与行状态
 
 ```text
-plugin_manager install_bundle(target=/Users/seyana/Desktop/DSH/dsh-model-pin)
-→ profile package.json: "dsh-model-pin": "link:/Users/seyana/Desktop/DSH/dsh-model-pin"
+plugin_manager install_bundle(target=~/Desktop/DSH/dsh-model-pin)
+→ profile package.json: "dsh-model-pin": "link:~/Desktop/DSH/dsh-model-pin"
 → profile dsh.profile.bundles 末位: "dsh-model-pin"
-→ node_modules/dsh-model-pin -> ../../../../Desktop/DSH/dsh-model-pin
+→ node_modules/dsh-model-pin -> <插件目录>
 ```
 
 `plugin_manager list_plugins`（共 209 项）中的关键两行：

@@ -665,7 +665,7 @@ async saveSelection(next) {
 ## 开发与测试
 
 ```bash
-cd /Users/seyana/Desktop/DSH/dsh-model-pin
+cd ~/Desktop/DSH/dsh-model-pin
 node test/run.mjs
 ```
 
