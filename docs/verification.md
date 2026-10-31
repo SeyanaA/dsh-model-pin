@@ -57,7 +57,8 @@ plugin_manager install_bundle(target=/Users/seyana/Desktop/DSH/dsh-model-pin)
 
 `agent-default-model` 只有一处、且 `disabled: true`；`dsh-model-pin` 只有一行；共 206 个
 entry、无重复 id。`--dump-config-schema` 中该行对应 `$defs/config105`：
-`provider`、`model` 必填，`reasoningEffort` 可选，三者均带 `x-cordis.volatile: true`。
+`provider`、`model`、`reasoningEffort` 三者都是可选字段（0.1.1 起不再 required，见第 7 节），
+且都带 `x-cordis.volatile: true`。
 
 ## 4. 运行时行为（隔离 web 实例 + 已认证 RPC）
 
@@ -107,7 +108,27 @@ session/modelCatalog.default                → {... "reasoningEffort":"max"}
 bundle 并向 `settings.section` 注册「模型固定」页面；页面读取的就是第 4 节验证过的
 `configForms` 与模型目录。
 
-## 6. 未验证 / 已知边界
+## 6. 0.1.1 加固后的复验
+
+独立代码审计（3 个 major / 若干 minor）后的修复在**同一套隔离环境**复验：
+
+- **缺字段容错（对应 major「配置写错会拖垮会话服务」）**：`settings.mutate` 把
+  `provider` 改成空字符串 → 写入成功；`settings/describe` 仍返回该行（插件仍挂载）；
+  `session/modelCatalog` 仍成功返回 `default: {"provider":"","model":"deepseek-v4.1-flash"}`
+  ——依赖 `agentDefaultModel` 的 Session controller 没有跟着卸载。恢复 `provider` 后一切复原。
+- **schema 不再 required**：`--dump-config-schema` 的 `$defs/config105` 中
+  `provider` / `model` / `reasoningEffort` 均为可选（且仍 `x-cordis.volatile: true`）；
+  `settings.describe` 返回的表单 schema 中没有 `required` 数组。
+- **热更新仍成立**：`settings.mutate` 把 `reasoningEffort` 从 `max` 改成 `high` →
+  `session/modelCatalog.default` 立即变为 `high`；再改回 `max`，无需重启。
+- **客户端**：boot payload 中本插件模块的 `rev` 由 `0a17caa4d41b` 变为
+  `79929bbed9ec`，制品 30603 B 正常下发（含 `formStale` / `notConfigured` 等新文案）。
+- `node test/run.mjs`：28/28 通过。
+
+> 运行中的真实 DSH 实例**尚未重启**，它仍加载安装时的 0.1.0 宿主模块（两者机制一致，
+> 且 0.1.1 的行为已在隔离实例验证）；重启 DeepSeek Harness 后即为 0.1.1。
+
+## 7. 未验证 / 已知边界
 
 - **设置页的视觉渲染与鼠标操作**：本机没有可用的浏览器自动化，未做截图级验证；
   页面逻辑依赖的 `settings.describe` / `settings.mutate` / `session.modelCatalog`

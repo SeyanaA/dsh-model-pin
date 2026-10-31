@@ -48,6 +48,7 @@ window.__ModuleLoader__.load({
       description:
         '新会话默认使用的模型与供应商。在会话内切换模型仍然有效，但不会改写这里的默认值。',
       current: '当前固定',
+      notConfigured: '尚未固定：请在下面选择供应商与模型并保存。',
       provider: '供应商',
       providerHint: '新会话默认使用的 provider 路由。',
       model: '模型',
@@ -60,6 +61,7 @@ window.__ModuleLoader__.load({
       saved: '已保存',
       saveFailed: '保存失败，请重试',
       loadingForm: '正在读取配置…',
+      formStale: '配置读取超时：请重启 DSH，或检查 profile 的 cordis.patch.yml 里 dsh-model-pin 行。',
       unavailable: '插件配置当前不可用（请确认 dsh-model-pin 已启用）。',
       loading: '正在读取模型目录…',
       catalogFailed: '模型目录读取失败，仍可保存当前值。',
@@ -76,6 +78,7 @@ window.__ModuleLoader__.load({
       description:
         'The model and provider new sessions start from. The in-session model picker keeps working, but it no longer rewrites this default.',
       current: 'Currently pinned',
+      notConfigured: 'Not pinned yet — choose a provider and model below and save.',
       provider: 'Provider',
       providerHint: 'Provider route used by newly created sessions.',
       model: 'Model',
@@ -88,6 +91,7 @@ window.__ModuleLoader__.load({
       saved: 'Saved',
       saveFailed: 'The save was rejected; try again.',
       loadingForm: 'Reading the configuration…',
+      formStale: 'Reading the configuration timed out. Restart DSH, or check the dsh-model-pin row in the profile cordis.patch.yml.',
       unavailable: 'The plugin configuration is unavailable (check that dsh-model-pin is enabled).',
       loading: 'Reading the model directory…',
       catalogFailed: 'The model directory could not be read; the saved value can still be changed.',
@@ -135,15 +139,19 @@ window.__ModuleLoader__.load({
       '.dshmp-note{margin:12px 0 0;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}',
     ].join('\n')
 
-    /** Append the stylesheet once; a remount or hot reload keeps one copy. */
+    /** Append the stylesheet once; a remount or client HMR refreshes its text. */
     function ensureStyle() {
       if (typeof document === 'undefined') return
-      if (document.querySelector('style[data-plugin="dsh-model-pin"]') !== null) return
-      const tag = document.createElement('style')
-      tag.dataset.plugin = 'dsh-model-pin'
-      tag.dataset.pluginCss = STYLE_ID
-      tag.textContent = CSS
-      document.head.appendChild(tag)
+      let tag = document.querySelector('style[data-plugin="dsh-model-pin"]')
+      if (tag === null) {
+        tag = document.createElement('style')
+        tag.dataset.plugin = 'dsh-model-pin'
+        tag.dataset.pluginCss = STYLE_ID
+        document.head.appendChild(tag)
+      }
+      // Rewrite the text on every activation so a hot-reloaded module never
+      // keeps stale rules from the previous generation.
+      if (tag.textContent !== CSS) tag.textContent = CSS
     }
 
     //#endregion
@@ -282,6 +290,7 @@ window.__ModuleLoader__.load({
         const [draft, setDraft] = useState(null)
         const [saving, setSaving] = useState(false)
         const [status, setStatus] = useState(null)
+        const [formStale, setFormStale] = useState(false)
         const mounted = useRef(true)
 
         useEffect(() => {
@@ -364,10 +373,23 @@ window.__ModuleLoader__.load({
           setDraft(toDraft(snapshot.value))
         }, [revision, ready])
 
+        // A form that never becomes ready (a Host row that failed to activate
+        // or a schema the client could not decode) would otherwise show
+        // "正在读取配置…" forever. Turn that into an explicit diagnostic.
+        useEffect(() => {
+          if (ready) {
+            setFormStale(false)
+            return
+          }
+          const timer = setTimeout(() => setFormStale(true), 8000)
+          return () => clearTimeout(timer)
+        }, [ready])
+
         const groups = catalog.groups
         const { model: selectedModel } = resolveSelection(groups, draft)
         const efforts = effortsFor(selectedModel)
-        const summary = pinned ? describeSelection(groups, pinned) : undefined
+        const pinnedComplete = pinned !== undefined && fieldText(pinned.provider) !== '' && fieldText(pinned.model) !== ''
+        const summary = pinnedComplete ? describeSelection(groups, pinned) : undefined
 
         const dirty = Boolean(draft) && Boolean(pinned) ? !sameSelection(draft, pinned) : false
         const writable = Boolean(snapshot && snapshot.writable)
@@ -484,9 +506,17 @@ window.__ModuleLoader__.load({
         }, [efforts, draft && draft.reasoningEffort, t])
 
         const catalogEmpty = catalog.status === 'ready' && groups.length === 0
+        // Keep the effort row when a value is pinned even if the selected model
+        // advertises none (or is missing from the catalog): otherwise a stale
+        // reasoningEffort could never be cleared from this page.
+        const showEffort = efforts.length > 0 || fieldText(draft && draft.reasoningEffort) !== ''
 
         if (!ready) {
-          const copy = snapshot && snapshot.status === 'unavailable' ? t('unavailable') : t('loadingForm')
+          const copy = formStale && !(snapshot && snapshot.status === 'unavailable')
+            ? t('formStale')
+            : snapshot && snapshot.status === 'unavailable'
+              ? t('unavailable')
+              : t('loadingForm')
           return h(
             'div',
             { className: 'dshmp-section' },
@@ -510,7 +540,7 @@ window.__ModuleLoader__.load({
               'div',
               { className: 'dshmp-current' },
               h('span', { className: 'dshmp-currentLabel' }, t('current')),
-              h('span', { className: 'dshmp-currentValue' }, summary ? summary.title : '—'),
+              h('span', { className: 'dshmp-currentValue' }, summary ? summary.title : t('notConfigured')),
               summary ? h('span', { className: 'dshmp-currentRaw' }, summary.raw) : null,
             ),
             h(
@@ -555,7 +585,7 @@ window.__ModuleLoader__.load({
                 modelOptions,
               ),
             ),
-            efforts.length > 0
+            showEffort
               ? h(
                   'div',
                   { className: 'dshmp-row' },

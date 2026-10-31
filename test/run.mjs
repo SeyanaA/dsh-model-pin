@@ -328,6 +328,7 @@ test('manifest: host peers and engine bounds', () => {
   const engines = manifest.engines ?? {}
   assert(engines.node === '>=22', 'engines.node must be >=22')
   assertMatch(String(engines.dsh ?? ''), /^>=0\.2\.0/, 'engines.dsh must require DSH >= 0.2.0')
+  assertMatch(String(engines.dsh ?? ''), /<0\.3\.0/, 'engines.dsh must cap the next minor so a breaking 0.3 upgrade is refused')
 })
 
 test('manifest: files[] covers every shipped runtime file', () => {
@@ -511,9 +512,11 @@ test('host: saveSelection never persists the picker choice', () => {
 test('host: Config keeps the three live fields', () => {
   const source = read('index.js')
   assertMatch(source, /static Config = z\.object\(\{/, 'Config must be a Schemastery object')
-  assertMatch(source, /provider:\s*z\.string\(\)\.required\(\)\.volatile\(\)/, 'provider must be required and volatile')
-  assertMatch(source, /model:\s*z\.string\(\)\.required\(\)\.volatile\(\)/, 'model must be required and volatile')
+  assertMatch(source, /provider:\s*z\.string\(\)\.volatile\(\)/, 'provider must be volatile and tolerant of a missing value')
+  assertMatch(source, /model:\s*z\.string\(\)\.volatile\(\)/, 'model must be volatile and tolerant of a missing value')
   assertMatch(source, /reasoningEffort:\s*z\.string\(\)\.volatile\(\)/, 'reasoningEffort must be optional and volatile')
+  assertMatch(source, /incompleteReported/, 'an incomplete pin must be reported instead of failing Config validation')
+  assertMatch(source, /listProviders\(\)/, 'a pin whose provider is not registered must be diagnosed')
   assertMatch(source, /settings\.configure\(\{\s*auto:\s*false\s*\}/, 'the row must opt out of the automatic Settings form')
 })
 
@@ -573,7 +576,7 @@ test('docs: README documents every Config field', () => {
     const occurrences = (readme.match(new RegExp(`\`${field}\``, 'g')) ?? []).length
     assert(occurrences >= 2, `README must mention the Config field ${field} at least twice, found ${occurrences}`)
   }
-  assertMatch(readme, /必填/, 'README must mark required fields')
+  assertMatch(readme, /(必填|缺失)/, 'README must document the required/missing-field behaviour')
   assertMatch(readme, /cordis\.patch\.yml/, 'README must point at cordis.patch.yml')
   assertMatch(readme, /dsh-model-pin/, 'README must name the config entry id')
   assertMatch(readme, /reasoningEffort: ""/, 'README must document the blank-string "follow model default" override')

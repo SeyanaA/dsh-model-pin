@@ -77,8 +77,9 @@ DSH 自带的默认模型服务是 `@deepseek-ai/dsh-agent-default-model`（总�
 
 ## 环境要求
 
-- **DeepSeek Harness Desktop ≥ 0.2.0-rc.3**（本插件在 macOS 的 DSH Desktop **0.2.1-rc.5**，
-  内部 `@deepseek-ai/*` 包版本 0.2.1-rc.3 的 `desktop` profile 上开发与验证）；
+- **DeepSeek Harness Desktop ≥ 0.2.0-rc.3，且 < 0.3.0**（`engines.dsh` 已限制上界：
+  本插件替换核心服务，跨 minor 升级需要重新适配；验证环境为 macOS 的 DSH Desktop
+  **0.2.1-rc.5**、内部 `@deepseek-ai/*` 包 0.2.1-rc.3 的 `desktop` profile）；
 - 插件是纯 JavaScript（ESM），无原生模块、无第三方依赖，macOS / 其它桌面平台通用；
 - Node.js ≥ 22（使用 DSH 自带运行时即可，**不需要** `npm install`）；
 - 宿主半边把 `@deepseek-ai/cordis` 与 `@deepseek-ai/schemastery` 声明为 peerDependencies，
@@ -205,11 +206,15 @@ DSH 自带的默认模型服务是 `@deepseek-ai/dsh-agent-default-model`（总�
 
 字段表（即插件 `Config` 的 schema）：
 
-| 字段 | 必填 | 默认值 | 说明 |
+| 字段 | 填写建议 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `provider` | **是** | `opencode-go`（安装种子） | 供应商路由 id，必须与 `设置 → 模型` 里的 Provider ID 一致（如 `opencode-go`、`deepseek-official`、`deepseek-account`） |
-| `model` | **是** | `deepseek-v4.1-flash`（安装种子） | 该供应商下的**模型 id**（不是显示名，如 `deepseek-v4.1-flash`，而不是 `DeepSeek V4.1 Flash`） |
+| `provider` | **建议填写**（缺失时插件仍加载，但新会话无法发起请求，日志会报错；设置页可补全） | `opencode-go`（安装种子） | 供应商路由 id，必须与 `设置 → 模型` 里的 Provider ID 一致（如 `opencode-go`、`deepseek-official`、`deepseek-account`） |
+| `model` | **建议填写**（同上） | `deepseek-v4.1-flash`（安装种子） | 该供应商下的**模型 id**（不是显示名，如 `deepseek-v4.1-flash`，而不是 `DeepSeek V4.1 Flash`） |
 | `reasoningEffort` | 否 | `max`（安装种子）；省略 = 跟随模型默认 | 推理强度 id，取值由模型声明（常见 `off` / `minimal` / `low` / `medium` / `high` / `xhigh` / `max`）；写模型不支持的档位会在请求时报错，见[已知限制](#已知限制) |
+
+> `provider` / `model` 在 schema 里**不是** required：把配置写错/写空不会让插件行加载失败，
+> 从而也不会连带卸载依赖 `agentDefaultModel` 的会话服务。代价是固定值不完整时，
+> 新会话在第一次请求时才会失败并给出错误；此时到 `设置 → 模型固定` 里补全保存即可恢复。
 
 `reasoningEffort` 的三种写法等价于「不固定推理强度」：
 
@@ -225,8 +230,8 @@ DSH 自带的默认模型服务是 `@deepseek-ai/dsh-agent-default-model`（总�
 
 手工编辑的注意事项：
 
-- `config` 是**整体替换**语义：改这一行时要把需要的字段都写上（`provider` 与 `model`
-  必填；`reasoningEffort` 可省略，省略即跟随模型默认）；
+- `config` 是**整体替换**语义：改这一行时把需要的字段都写上（强烈建议写全 `provider` 与
+  `model`；`reasoningEffort` 可省略，省略即跟随模型默认）；
 - 改完**不需要重启 DSH**——三个字段都是 volatile 的，配置引用会被重新采样，**新会话**立即生效；
 - 正在进行的会话不会中途换模型：它在每轮请求开始时已经确定了自己要用的模型。
 
@@ -320,7 +325,8 @@ async saveSelection(next) {
 - 通过 `ctx.remote.session.modelCatalog()` 读取实时模型目录（供应商 / 模型 / 推理档位）；
 - 通过 `ctx.configForms.get('dsh-model-pin')` 拿到同一份配置的共享表单，用一次原子
   `mutate` 写入三个字段，因此保存要么全部生效、要么全部不生效；
-- 配置不可写（例如部署被设为只读）时页面只读，保存按钮禁用。
+- 配置不可写时保存按钮禁用（当前版本 `settings.describe().writable` 恒为 `true`，
+  这里只是防御性处理，正常部署不会触发）。
 
 ## 与系统自带模型选择的关系
 
@@ -345,11 +351,12 @@ async saveSelection(next) {
   模型；插件只负责没有显式路由记录时的兜底值。
 - **子代理（subagent）**：子代理会话由宿主按父会话配置创建，不单独读取「默认模型」；
   子代理内也不会出现默认模型选择器。本插件不会让子代理偏离父会话的既有选择。
-- **headless 运行**（如 `dsh --profile headless "…"`）：headless 入口同样调用
-  `agentDefaultModel.currentSelection()`，因此也会使用固定值。
+- **headless 运行**（如 `dsh --profile headless "…"`）：**如果 headless profile 也安装并
+  启用了本插件**，headless 入口会调用 `agentDefaultModel.currentSelection()`，因此同样使用
+  固定值；没有安装本插件的 headless profile 仍用系统自带的默认模型行为。
 - **登录后自动选择模型**：如果某个 provider 完全没有可用凭证，宿主可能会走
   「登录后自动挑第一个可用模型并保存默认」的流程；本插件的空操作同样会忽略这次保存，
-  固定值保持不变。
+  固定值保持不变（见[已知限制](#已知限制)）。
 
 ## 验证与排查
 
@@ -401,12 +408,12 @@ async saveSelection(next) {
 
 **Q：提示不支持某个推理强度（`does not support reasoning effort …`）？**
 固定值里的 `reasoningEffort` 该模型不支持。到 `设置 → 模型固定` 把它改成
-**跟随模型默认**（不写该字段），或选模型声明过的档位。
+**跟随模型默认**（页面会写入空字符串覆盖，等价于不固定强度），或选模型声明过的档位。
 
 **Q：保存按钮是灰的 / 保存报错？**
-灰的三种原因：没有改动、正在保存、或者当前 profile 的配置只读（页面会显示
-「当前 profile 的配置为只读，无法保存。」）。报错时页面会显示「保存失败，请重试」，
-检查 profile 目录是否可写、DSH 是否有另一个实例正在占用同一个 profile。
+灰的原因是：没有改动、正在保存、或配置不可写（后者在当前版本恒为可写，只是防御性处理）。
+报错时页面会显示「保存失败，请重试」，检查 profile 目录是否可写、DSH 是否有另一个实例
+正在占用同一个 profile。
 
 ## 卸载与回滚
 
@@ -454,9 +461,17 @@ async saveSelection(next) {
   本页的「[验证与排查](#验证与排查)」清单。插件不会主动修改 DSH 自身的安装文件。
 - **只影响新会话**：默认值是「会话创建 / 首次请求」时读取的；已经在跑的会话、正在进行的
   一轮请求都不会中途换模型。想让旧会话也用固定值，请新开会话。
-- **Config 的 `provider` / `model` 必填**：这两个字段没有默认值兜底（安装种子只是写入 profile
-  的初始值）。把 `cordis.patch.yml` 里这两个字段删掉会导致该插件行加载失败，届时默认模型
-  服务缺失，新建会话会报错。
+- **Config 的 `provider` / `model` 建议写全**：这两个字段没有默认值兜底（安装种子只是写入
+  profile 的初始值）。缺字段/写错时插件行仍会加载（避免连带卸载会话服务），但
+  `currentSelection()` 返回空路由、日志记录一条明确错误，新会话在发起请求时报
+  `no provider/model`；到 `设置 → 模型固定` 补全保存即可恢复。
+- **插件包更新会带回种子值**：首次安装时固定值来自插件 bundle patch 里的种子
+  （`opencode-go` / `deepseek-v4.1-flash` / `max`）。如果你**没有**在设置页保存过，
+  更新插件包/重新安装会把固定值重置为新的种子值；只要保存过一次，你的值就在 profile
+  的 `cordis.patch.yml` 覆盖层里，包更新不会覆盖它。
+- **账号首次登录的自动选模不会生效**：宿主内置的 `initializeDefaultModel()`
+  会在「没有任何可用 provider」时把第一个账号模型保存为默认；本插件的空操作会忽略这次
+  保存，固定值保持不变（这正是「固定」的含义）。若固定值指向不可用路由，请手动改到可用模型。
 - **不校验模型可用性**：插件只做「默认值」这一件事，不检查模型是否存在于目录、凭证是否
   可用。固定到一个已下线 / 未配置密钥的模型时，错误会在真正发起请求时才由供应商适配器报出。
 - **推理强度是模型能力**：`reasoningEffort` 的合法取值由模型自己声明；写了模型不支持的档位
@@ -501,6 +516,7 @@ package.json        插件清单（dsh.bundle / dsh.client 声明、exports、fi
 icon.svg            插件图标
 locale/en.json      英文元数据（标题 / 描述）
 locale/zh.json      中文元数据（标题 / 描述）
+docs/               图标预览与交付验证记录（docs/verification.md）
 test/               纯 Node 冒烟测试（node test/run.mjs）
 .github/workflows/  CI
 ```
