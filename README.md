@@ -1,5 +1,7 @@
 # dsh-model-pin · 模型固定
 
+<img src="./docs/icon.png" width="72" height="72" alt="dsh-model-pin 图标">
+
 给 [DeepSeek Harness Desktop](https://github.com/deepseek-ai) 用的**新会话默认模型固定**插件：
 新开的会话永远从你指定的 `provider` + `model`（可带推理强度）开始；会话内的模型选择器、
 `/model` 命令照常可用，但**切换只影响当前会话，不会再改写默认值**。
