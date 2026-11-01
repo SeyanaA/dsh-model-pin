@@ -64,7 +64,13 @@
   Agent 注册 / 手动注册、注册成功标志；新增 **「使用方法」** 章节（3 分钟上手、日常使用速查、
   生效规则）；
 - `package.json` 增加 `repository` / `homepage` / `bugs` / `author` / `keywords`，便于在
-  GitHub 与插件生态中检索。
+  GitHub 与插件生态中检索；
+- README 声明本插件**主要配合
+  [Codex-to-DSH-Bridge](https://github.com/SeyanaA/Codex-to-DSH-Bridge)（Codex → DSH 桥接器）
+  使用**：首段提示 + 新增「与 Codex-to-DSH-Bridge 配合使用」章节（分工、为什么需要配对、
+  建议把固定值设为桥接器同款 `deepseek-official / deepseek-flash` + `max`、两者可独立使用、
+  平台验证范围各自以仓库 README 为准），英文段同步说明；`package.json` keywords 增加
+  `codex-to-dsh`，GitHub 仓库描述与 topics 同步标注。
 
 ## 0.1.1 — 2026-11-01
 

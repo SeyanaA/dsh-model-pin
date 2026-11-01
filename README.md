@@ -14,6 +14,12 @@
 新开的会话永远从你指定的 `provider` + `model`（可带推理强度）开始；会话内的模型选择器、
 `/model` 命令照常可用，但**切换只影响当前会话，不会再改写默认值**。
 
+> **主要用途**：本插件主要配合
+> [Codex-to-DSH-Bridge](https://github.com/SeyanaA/Codex-to-DSH-Bridge)（Codex → DSH 桥接器）
+> 使用：桥接器负责把 Codex 的任务交给 DSH 执行，本插件负责把 DSH 新会话的默认模型固定成
+> 桥接器使用的同一组模型，避免会话内临时切换改写默认值。详见
+> [与 Codex-to-DSH-Bridge 配合使用](#与-codex-to-dsh-bridge-配合使用)。
+
 - **固定**：新会话 / 新对话一律使用你固定下来的供应商与模型；
 - **不劫持**：会话内模型选择器与 `/model` 继续可用，只是保存默认那一步变成空操作；
 - **可视化配置**：`设置 → 模型固定` 里选供应商、模型、推理强度，保存即生效；
@@ -25,7 +31,10 @@
 > A small plugin for DeepSeek Harness Desktop that pins the provider/model used by **newly
 > created sessions**. It replaces the built-in `agentDefaultModel` service and turns
 > `saveSelection()` into a no-op, so the in-session model picker and `/model` still work
-> per session but never rewrite the saved default. See [English](#english).
+> per session but never rewrite the saved default. It is primarily used together with
+> [Codex-to-DSH-Bridge](https://github.com/SeyanaA/Codex-to-DSH-Bridge), the Codex → DSH bridge
+> that hands Codex tasks to DSH: the bridge creates the DSH sessions, this plugin keeps their
+> default model pinned. See [English](#english).
 
 ---
 
@@ -34,6 +43,7 @@
 - [功能](#功能)
 - [为什么需要](#为什么需要)
 - [环境要求](#环境要求)
+- [与 Codex-to-DSH-Bridge 配合使用](#与-codex-to-dsh-bridge-配合使用)
 - [注册方法（安装到 DSH）](#注册方法安装到-dsh)
   - [方式零：从 GitHub 获取插件目录](#方式零从-github-获取插件目录)
   - [方式一：让 DSH 里的 Agent 注册（推荐）](#方式一让-dsh-里的-agent-注册推荐)
@@ -108,6 +118,34 @@ DSH 自带的默认模型服务是 `@deepseek-ai/dsh-agent-default-model`（总�
 - Node.js ≥ 22（使用 DSH 自带运行时即可，**不需要** `npm install`）；
 - 宿主半边把 `@deepseek-ai/cordis` 与 `@deepseek-ai/schemastery` 声明为 peerDependencies，
   由 DSH 自身提供，不会额外安装。
+
+## 与 Codex-to-DSH-Bridge 配合使用
+
+本插件**主要配合 [Codex-to-DSH-Bridge](https://github.com/SeyanaA/Codex-to-DSH-Bridge)**
+（Codex → DSH 桥接器）使用。分工如下：
+
+| 组件 | 负责什么 |
+| --- | --- |
+| Codex-to-DSH-Bridge | 把 Codex 的任务交给 DSH 执行，在 DSH Web 界面里查看过程，并把同一个 Codex 对话绑定到同一条 DSH 会话上继续工作；桥接器固定使用 **DeepSeek-V41-Flash / MAX**（在 DSH 中解析为 `deepseek-official / deepseek-flash` + `max` 推理强度） |
+| dsh-model-pin（本插件） | 固定该 DSH profile 的**新会话默认模型**，并阻止会话内的临时切换改写默认值 |
+
+为什么需要配对：桥接器每遇到一个新的 Codex 对话，就会在 DSH 里新建一条会话；新建会话使用
+的是 profile 的默认模型。如果默认值在桥接过程中被别的操作改写（例如你在 DSH 里临时换模型，
+系统自带的默认模型服务会把这次选择写回默认值），桥接器下一轮任务就可能跑到别的模型上。
+本插件把「保存默认」变成空操作，让桥接器始终拿到你固定的那一组模型。
+
+建议配置：
+
+1. 在 `设置 → 模型固定` 里把固定值设成与桥接器一致的一组，例如桥接器 README 写明的
+   `DeepSeek-V41-Flash / MAX`，在 DSH 中即 `deepseek-official / deepseek-flash` +
+   推理强度 `max`；
+2. 若桥接器升级后更换了固定模型，把本插件的固定值同步改成同一组即可；
+3. 新模型提醒与桥接器无关：它只提醒「provider 端点上有你模型目录里没有的新模型」，
+   不会改动桥接器的任务或模型配置。
+
+两者互相独立：不装桥接器时本插件仍可单独使用；不装本插件时桥接器也能工作，只是 DSH 新会话
+的默认模型可能被会话内切换改写。平台支持与验证范围各自以仓库 README 为准（桥接器当前发布版
+主要验证 Windows + DSH Web，本插件在 macOS + DSH Desktop 验证，可分别升级）。
 
 ## 注册方法（安装到 DSH）
 
@@ -721,6 +759,17 @@ A **model-pin** plugin for DeepSeek Harness Desktop (≥ 0.2.0-rc.3). It pins th
 provider/model used by **newly created sessions**.
 Repository: <https://github.com/SeyanaA/dsh-model-pin> — clone it with
 `git clone https://github.com/SeyanaA/dsh-model-pin.git ~/.dsh/local-plugins/dsh-model-pin`.
+
+**Primary pairing:** this plugin is mainly used together with
+[Codex-to-DSH-Bridge](https://github.com/SeyanaA/Codex-to-DSH-Bridge), the Codex → DSH bridge.
+The bridge hands Codex tasks to DSH and binds each Codex thread to a DSH session; new DSH
+sessions take the profile default, so pin it to the model the bridge uses (its README pins
+DeepSeek-V41-Flash / MAX, resolved in DSH as `deepseek-official / deepseek-flash` + `max`) to
+keep bridge runs and manually created sessions on the same model. Both components work
+independently: the bridge runs without this plugin, but its next new session may then inherit a
+default rewritten by an in-session model switch. Platform support and verification scope follow
+each repository's own README (the bridge's current release is verified mainly on Windows + DSH
+Web; this plugin is verified on macOS + DSH Desktop).
 
 The built-in `@deepseek-ai/dsh-agent-default-model` service both answers "which model should a
 fresh session use?" and persists a selection written back by the in-session picker. That means

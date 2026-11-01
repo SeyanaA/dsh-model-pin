@@ -18,7 +18,8 @@
     "cordis-plugin",
     "model",
     "default-model",
-    "model-pin"
+    "model-pin",
+    "codex-to-dsh"
   ],
   "type": "module",
   "main": "index.js",

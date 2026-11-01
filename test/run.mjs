@@ -716,6 +716,8 @@ test('docs: README sections required by the package usage guide', () => {
   const required = [
     '功能',
     '为什么需要',
+    '环境要求',
+    '与 Codex-to-DSH-Bridge 配合使用',
     '注册方法（安装到 DSH）',
     '使用方法',
     '配置',
@@ -734,6 +736,16 @@ test('docs: README sections required by the package usage guide', () => {
   assertMatch(readme, /node test\/run\.mjs/, 'README must document the test command')
   assertMatch(readme, /plugin_manager/, 'README must document the plugin_manager verification path')
   assertMatch(readme, /设置 → 模型固定/, 'README must point users at Settings → 模型固定')
+  assertMatch(
+    readme,
+    /Codex-to-DSH-Bridge/,
+    'README must declare the primary pairing with Codex-to-DSH-Bridge',
+  )
+  assertMatch(
+    readme,
+    /deepseek-official \/ deepseek-flash/,
+    'README must name the model pair the bridge resolves to',
+  )
 })
 
 test('docs: README documents the new-model reminder semantics', () => {
